@@ -1,0 +1,35 @@
+<html xmlns="http://www.w3.org/1999/html">
+    <head>
+        <title><%block name="title"/></title>
+        <link rel='icon' type='image/x-icon' href='static-files/favicon.ico'>
+
+    </head>
+    <body>
+        <main>
+            <header>
+                <%block name="header">
+                    <h2>
+                        <%block name="intro"/>
+                    </h2>
+                </%block>
+            </header>
+            <article>
+                ${self.body()}
+            </article>
+            <footer>
+                <%block name="footer">
+                <ul>
+                    <li>[<a href="/">Home/Sign In/Sign Out</a>]</li>
+                    <li>[<a href="/read-items">Read Items</a> (protected, requires bearer token)]</li>
+                    <li>[<a href="/profile">Profile</a>] (not protected)</li>
+                    <li>[<a href="/docs/" target="_blank">OpenAPI Documentation - Default </a>]</li>
+                    <li>[<a href="/docs/redoc" target="_blank">OpenAPI Documentation - Redoc</a>]</li>
+                    <li>[<a href="/docs/rapidoc" target="_blank">OpenAPI Documentation - Rapid Doc</a>]</li>
+                    <li>[<a href="/docs/swagger" target="_blank">OpenAPI Documentation - Swagger</a>]</li>
+                    <li>[<a href="/docs/elements" target="_blank">OpenAPI Documentation - Spotlight Elements</a>]</li>
+                </ul>
+                </%block>
+            </footer>
+        </main>
+    </body>
+</html>
