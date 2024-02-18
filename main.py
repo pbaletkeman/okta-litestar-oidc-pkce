@@ -2,6 +2,7 @@ import base64
 import hashlib
 
 from datetime import datetime
+
 from dotenv import load_dotenv
 
 import os
@@ -103,7 +104,7 @@ oauth2_auth = OAuth2PasswordBearerAuth[User](
         "/login",
         "/docs",
         "/healthz",
-        "^/$",
+        "^/$",  # home page
         "/metrics",
         "/static-files",
         "/sign-in",
@@ -182,7 +183,7 @@ class SSO(Controller):
                         'code_challenge_method': 'S256',
                         'nonce': self.config.get('nonce'),
                         'response_type': 'code',
-                        'response_mode': 'query'}
+                        'response_mode': 'form_post'}
 
         if self.config.get('prompt'):
             query_params = {'client_id': self.config.get('client_id'),
@@ -194,7 +195,7 @@ class SSO(Controller):
                             'nonce': self.config.get('nonce'),
                             'prompt': self.config.get('prompt'),
                             'response_type': 'code',
-                            'response_mode': 'query'}
+                            'response_mode': 'form_post'}
 
         # build request_uri
         encoded_params = (requests.compat.urlencode(query_params))
@@ -213,12 +214,12 @@ class SSO(Controller):
             request.session.pop('user', None)
         return Redirect('/?sign-out=t')
 
-    @get('/authorization-code/callback')
+    @HTTPRouteHandler('/authorization-code/callback', http_method=[HttpMethod.POST])
     async def callback(self, request: Request) -> str | Response[Any]:
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-
-        code: str = request.query_params.get('code')
-        app_state: str = request.query_params.get('state')
+        form = await request.form()
+        app_state = form.get('state')
+        code = form.get('code')
 
         if app_state != request.session.get('app_state') and app_state != self.app_state:
             print('The app state does not match')
@@ -240,8 +241,8 @@ class SSO(Controller):
             data=query_params,
             auth=(self.config.get('client_id'), self.config.get('client_secret'))
         ).json()
-        print('exchange')
-        print(exchange)
+        # print('exchange')
+        # print(exchange)
 
         # get token and validate
         if not exchange.get('token_type'):
