@@ -23,7 +23,7 @@ from litestar.openapi.config import OpenAPIConfig
 from litestar.security.jwt import OAuth2Login, OAuth2PasswordBearerAuth, Token
 from litestar.status_codes import HTTP_302_FOUND
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 load_dotenv('.env')
 
@@ -53,16 +53,16 @@ class User(BaseModel):
     This can be whatever we want, don't have to use these properties
     """
     id: str
-    name: str
-    email: EmailStr
-    token: dict[str, Any]
+    user_response: dict[str, Any]
+    access_token: dict[str, Any]
+    id_token: str
 
-    def claims(self):
-        """
-        something about user's claims
-        :return: user claim
-        """
-        return {'name': self.name, 'email': self.email}.items()
+    # def claims(self):
+    #     """
+    #     something about user's claims
+    #     :return: user claim
+    #     """
+    #     return {'name': self.name, 'email': self.email}.items()
 
 
 USERS_DB: dict[str, User] = {}
@@ -115,26 +115,23 @@ oauth2_auth = OAuth2PasswordBearerAuth[User](
 
 
 class SSO(Controller):
-    NONCE = str(secrets.token_hex(64))
-
     OKTA_DOMAIN = os.getenv('OKTA_DOMAIN')
-    CLIENT_ID = os.getenv('CLIENT_ID')
-    CLIENT_SECRET = os.getenv('CLIENT_SECRET')
-    REDIRECT_URL = os.getenv('REDIRECT_URL')
-    PROMPT = os.getenv('OKTA_PROMPT', None)
 
     app_state = str(secrets.token_hex(64))
     code_verifier = str(secrets.token_hex(64))
 
     config: dict[str, str] = {
-        'SECRET_KEY': secrets.token_hex(64),
+        'secret_key': str(secrets.token_hex(64)),
+        'nonce': str(secrets.token_hex(64)),
         'auth_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/authorize',
-        'client_id': CLIENT_ID,
-        'client_secret': CLIENT_SECRET,
-        'redirect_uri': REDIRECT_URL,
+        'client_id': os.getenv('CLIENT_ID'),
+        'client_secret': os.getenv('CLIENT_SECRET'),
+        'redirect_uri': os.getenv('REDIRECT_URL'),
         'issuer': 'https://' + OKTA_DOMAIN + '/oauth2/default',
         'token_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/token',
-        'userinfo_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/userinfo'
+        'userinfo_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/userinfo',
+        'introspection': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/introspect',
+        'prompt': os.getenv('OKTA_PROMPT', None)
     }
 
     @get(path='/profile/')
@@ -158,7 +155,7 @@ class SSO(Controller):
 
     # Given an instance of 'OAuth2PasswordBearerAuth' we can create a login handler function:
     @post("/login")
-    async def login_handler(self,  data: "User") -> "Response[OAuth2Login]":
+    async def login_handler(self, data: "User") -> "Response[OAuth2Login]":
         # async def sign_in(self, request: Request) -> Redirect:
         USERS_DB[str(data.id)] = data
         # if we do not define a response body, the login process will return a standard OAuth2 login response.
@@ -170,8 +167,6 @@ class SSO(Controller):
 
     @HTTPRouteHandler(path="/sign-in", http_method=[HttpMethod.GET, HttpMethod.POST], status_code=HTTP_302_FOUND)
     async def sign_in(self, request: Request) -> Redirect:
-        self.app_state = str(secrets.token_hex(64))
-        self.code_verifier = str(secrets.token_hex(64))
         request.set_session({'app_state': self.app_state, 'code_verifier': self.code_verifier})
 
         # calculate code challenge
@@ -179,25 +174,25 @@ class SSO(Controller):
         encoded = base64.urlsafe_b64encode(hashed)
         code_challenge = encoded.decode('ascii').strip('=')
         # get request params
-        query_params = {'client_id': self.config['client_id'],
-                        'redirect_uri': self.config['redirect_uri'],
+        query_params = {'client_id': self.config.get('client_id'),
+                        'redirect_uri': self.config.get('redirect_uri'),
                         'scope': 'openid email profile',
                         'state': self.app_state,
                         'code_challenge': code_challenge,
                         'code_challenge_method': 'S256',
-                        'nonce': self.NONCE,
+                        'nonce': self.config.get('nonce'),
                         'response_type': 'code',
                         'response_mode': 'query'}
 
-        if self.PROMPT:
-            query_params = {'client_id': self.config['client_id'],
-                            'redirect_uri': self.config['redirect_uri'],
+        if self.config.get('prompt'):
+            query_params = {'client_id': self.config.get('client_id'),
+                            'redirect_uri': self.config.get('redirect_uri'),
                             'scope': 'openid email profile',
                             'state': self.app_state,
                             'code_challenge': code_challenge,
                             'code_challenge_method': 'S256',
-                            'nonce': self.NONCE,
-                            'prompt': self.PROMPT,
+                            'nonce': self.config.get('nonce'),
+                            'prompt': self.config.get('prompt'),
                             'response_type': 'code',
                             'response_mode': 'query'}
 
@@ -245,6 +240,8 @@ class SSO(Controller):
             data=query_params,
             auth=(self.config.get('client_id'), self.config.get('client_secret'))
         ).json()
+        print('exchange')
+        print(exchange)
 
         # get token and validate
         if not exchange.get('token_type'):
@@ -260,16 +257,14 @@ class SSO(Controller):
         # print('user_response')
         # print(user_response)
         unique_id = user_response.get('sub')
-        user_email = user_response.get('email')
-        user_name = user_response.get('given_name')
 
         auth_user = oauth2_auth.login(identifier=str(unique_id))
 
         user = User(
             id=unique_id,
-            name=user_name,
-            email=user_email,
-            token=auth_user.content
+            user_response=user_response,
+            access_token=auth_user.content,
+            id_token=id_token
         )
 
         if not USERS_DB.get(unique_id):
