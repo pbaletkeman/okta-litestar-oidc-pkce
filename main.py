@@ -131,7 +131,6 @@ class SSO(Controller):
         'issuer': 'https://' + OKTA_DOMAIN + '/oauth2/default',
         'token_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/token',
         'userinfo_uri': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/userinfo',
-        'introspection': 'https://' + OKTA_DOMAIN + '/oauth2/default/v1/introspect',
         'prompt': os.getenv('OKTA_PROMPT', None)
     }
 
@@ -214,7 +213,7 @@ class SSO(Controller):
             request.session.pop('user', None)
         return Redirect('/?sign-out=t')
 
-    @HTTPRouteHandler('/authorization-code/callback', http_method=[HttpMethod.POST])
+    @post('/authorization-code/callback')
     async def callback(self, request: Request) -> str | Response[Any]:
         headers = {'Content-Type': 'application/x-www-form-urlencoded'}
         form = await request.form()
